@@ -12,7 +12,7 @@ database = 'NieruchomosciScrapping'
 conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';'+'Trusted_Connection=yes;')
 
 
-while(cnt!=0): 
+while(cnt!=0):
     cnt=0
     url = "https://www.otodom.pl/sprzedaz/dzialka/piaseczno/budowlana/?search%5Bfilter_float_m%3Afrom%5D=900&search%5Bfilter_float_m%3Ato%5D=1300&search%5Bdescription%5D=1&search%5Bregion_id%5D=7&search%5Bsubregion_id%5D=184&search%5Bcity_id%5D=811&search%5Bdist%5D=5&nrAdsPerPage=72"
     while(url!=""):
