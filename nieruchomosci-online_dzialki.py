@@ -5,6 +5,16 @@ from datetime import datetime
 from geopy.geocoders import Nominatim
 from math import sin, cos, sqrt, atan2, radians
 import time
+from user_agent import generate_user_agent
+
+def getMiejscowosc(miejsce):
+    miejscowosci=['Piaseczno','Bobrowiec','Głosków','Gołków','Konstancin-Jeziona', 'Wołomin','Zalesie Dolne','Zalesie Górne','Zalesie','Nadarzyn','Warszawa','Laski','Chotomów','Gołków-Letnisko','Chylice','Henryków-Urocze']
+
+    for miejscowosc in miejscowosci:
+        if miejscowosc.lower() in miejsce.lower():
+            return miejscowosc
+        
+    return miejsce
 
 def getDistance(place1, place2):
 
@@ -38,8 +48,13 @@ def getDistance(place1, place2):
 starting_time_global = datetime.now()
 server = 'LAPTOP-6FDB4KPM' 
 database = 'NieruchomosciScrapping' 
-
+session = requests.Session()
+session.trust_env = False
+user_agent = generate_user_agent(os=('mac', 'linux', 'win'))
+headers = {'user-agent': user_agent}
 conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';'+'Trusted_Connection=yes;MARS_Connection=Yes')
+cursor_distance=conn.cursor()
+cursor_distance.execute('TRUNCATE TABLE stg.nieruchomosci_dzialki')
 cnt = 0
 urls = ["https://www.nieruchomosci-online.pl/szukaj.html?3,dzialka,sprzedaz,,Piaseczno:31230,,,10,,,,,,,,,,,,,,,1", 
 "https://www.nieruchomosci-online.pl/szukaj.html?3,dzialka,sprzedaz,,Bobrowiec:29768,,,10,,,,,,,,,,,,,,,1",
@@ -54,7 +69,7 @@ for url_main in urls:
     while url_main != "":
         try:
             starting_time = datetime.now()
-            odpowiedz = requests.get(url_main)
+            odpowiedz = session.get(url_main, headers=headers)
             html_doc = odpowiedz.text
             soup_main = BeautifulSoup(html_doc, 'html.parser')
             dzialki = soup_main.find_all(class_="tertiary")
@@ -68,10 +83,10 @@ for url_main in urls:
                 except KeyError:
                     continue
                 cursor = conn.cursor()
-                cursor.execute('SELECT * FROM dbo.nieruchomosci WHERE url = '+'\''+url+'\'')
+                cursor.execute('SELECT * FROM dbo.nieruchomosci_dzialki WHERE url = '+'\''+url+'\'')
                 if(cursor.rowcount>0):
                     continue
-                odpowiedz = requests.get(url)
+                odpowiedz = requests.get(url, headers=headers)
                 html_doc = odpowiedz.text
                 soup = BeautifulSoup(html_doc, 'html.parser')
                 try:
@@ -85,16 +100,23 @@ for url_main in urls:
                 cena_za_m2=soup.find_all(class_="info-secondary-price")[0].text
                 powierzchnia=soup.find_all(class_="info-area")[0].text
                 miejsce=soup.find_all(class_="title-b")[0].text
+                miejscowosc=getMiejscowosc(miejsce)
                 cursor_distance=conn.cursor()
                 cursor_distance.execute('SELECT * FROM dbo.odleglosci WHERE adres = '+'\''+miejsce+'\'')
                 if cursor_distance.rowcount == 0:
-                    odleglosc_od_PKP = getDistance(miejsce, "Dworcowa 9, Piaseczno, mazowieckie")
-                    odleglosc_od_Centrum = getDistance(miejsce, "Plac Defilad 1, Warszawa, mazowieckie")
-                    sql='INSERT INTO dbo.odleglosci VALUES (\'%s\',\'%s\',\'%s\')' % (miejsce, odleglosc_od_PKP, odleglosc_od_Centrum,)
+                    try:
+                        odleglosc_od_PKP = getDistance(miejsce, "Dworcowa 9, Piaseczno, mazowieckie")
+                    except:
+                        odleglosc_od_PKP = 'NULL'
+                    try:
+                        odleglosc_od_Centrum = getDistance(miejsce, "Plac Defilad 1, Warszawa, mazowieckie")
+                    except:
+                        odleglosc_od_Centrum = 'NULL'
+                    sql='INSERT INTO dbo.odleglosci VALUES (\'%s\',%s,%s)' % (miejsce, odleglosc_od_PKP, odleglosc_od_Centrum,)
                     cursor_distance.execute(sql)
                     conn.commit()
                 if cursor.rowcount == 0:
-                    sql_statement='INSERT INTO dbo.nieruchomosci VALUES (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',GETDATE(),\'%s\', 1)' % (url, miejsce, cena, powierzchnia, cena_za_m2, agent)
+                    sql_statement='INSERT INTO stg.nieruchomosci_dzialki ([url],[miejsce],[miejscowosc],[cena],[powierzchnia],[cena_za_m2],[data_wstawienia],[agent]) VALUES (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',GETDATE(),\'%s\')' % (url, miejsce, miejscowosc, cena, powierzchnia, cena_za_m2, agent)
                     cursor.execute(sql_statement)
                     conn.commit()
                     cnt+=1
