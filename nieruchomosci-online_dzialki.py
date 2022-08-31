@@ -130,6 +130,8 @@ for url_main in urls:
             url_main=""
         conn.commit()
 ending_time_global = datetime.now()
+cursor_distance=conn.cursor()
+cursor_distance.execute('EXEC dbo.refresh_nieruchomosci_dzialki')
 print('Execution time of the entire script: ' + str((ending_time_global-starting_time_global).total_seconds()))
 print('Rows inserted: ' + str(cnt))
     
