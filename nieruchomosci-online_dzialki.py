@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-import pyodbc
+import psycopg2
 from datetime import datetime
 from geopy.geocoders import Nominatim
 from math import sin, cos, sqrt, atan2, radians
@@ -46,14 +46,21 @@ def getDistance(place1, place2):
     return distance
 
 starting_time_global = datetime.now()
-server = 'LAPTOP-6FDB4KPM' 
-database = 'NieruchomosciScrapping' 
+
+
 session = requests.Session()
 session.trust_env = False
 user_agent = generate_user_agent(os=('mac', 'linux', 'win'))
 headers = {'user-agent': user_agent}
-conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';'+'Trusted_Connection=yes;MARS_Connection=Yes')
-cursor_distance=conn.cursor()
+
+#conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER='+server+';DATABASE='+database+';'+'Trusted_Connection=yes;MARS_Connection=Yes')
+
+connection = psycopg2.connect(user="postgres",
+                                  password="mamuska1",
+                                  host="localhost",
+                                  port="5432",
+                                  database="NieruchomosciWebScrapping")
+cursor_distance=connection.cursor()
 cursor_distance.execute('TRUNCATE TABLE stg.nieruchomosci_dzialki')
 cnt = 0
 urls = ["https://www.nieruchomosci-online.pl/szukaj.html?3,dzialka,sprzedaz,,Piaseczno:31230,,,10,,,,,,,,,,,,,,,1", 
@@ -82,8 +89,8 @@ for url_main in urls:
                     url=dzialka.find("h2").contents[0]["href"]
                 except KeyError:
                     continue
-                cursor = conn.cursor()
-                cursor.execute('SELECT * FROM dbo.nieruchomosci_dzialki WHERE url = '+'\''+url+'\'')
+                cursor = connection.cursor()
+                cursor.execute('SELECT * FROM public.nieruchomosci_dzialki WHERE url = '+'\''+url+'\'')
                 if(cursor.rowcount>0):
                     continue
                 odpowiedz = requests.get(url, headers=headers)
@@ -101,8 +108,8 @@ for url_main in urls:
                 powierzchnia=soup.find_all(class_="info-area")[0].text
                 miejsce=soup.find_all(class_="title-b")[0].text
                 miejscowosc=getMiejscowosc(miejsce)
-                cursor_distance=conn.cursor()
-                cursor_distance.execute('SELECT * FROM dbo.odleglosci WHERE adres = '+'\''+miejsce+'\'')
+                cursor_distance=connection.cursor()
+                cursor_distance.execute('SELECT * FROM public.odleglosci WHERE adres = '+'\''+miejsce+'\'')
                 if cursor_distance.rowcount == 0:
                     try:
                         odleglosc_od_PKP = getDistance(miejsce, "Dworcowa 9, Piaseczno, mazowieckie")
@@ -112,13 +119,13 @@ for url_main in urls:
                         odleglosc_od_Centrum = getDistance(miejsce, "Plac Defilad 1, Warszawa, mazowieckie")
                     except:
                         odleglosc_od_Centrum = 'NULL'
-                    sql='INSERT INTO dbo.odleglosci VALUES (\'%s\',%s,%s)' % (miejsce, odleglosc_od_PKP, odleglosc_od_Centrum,)
+                    sql='INSERT INTO public.odleglosci VALUES (\'%s\',%s,%s)' % (miejsce, odleglosc_od_PKP, odleglosc_od_Centrum,)
                     cursor_distance.execute(sql)
-                    conn.commit()
+                    connection.commit()
                 if cursor.rowcount == 0:
-                    sql_statement='INSERT INTO stg.nieruchomosci_dzialki ([url],[miejsce],[miejscowosc],[cena],[powierzchnia],[cena_za_m2],[data_wstawienia],[agent]) VALUES (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',GETDATE(),\'%s\')' % (url, miejsce, miejscowosc, cena, powierzchnia, cena_za_m2, agent)
+                    sql_statement='INSERT INTO stg.nieruchomosci_dzialki (url,miejsce,miejscowosc,cena,powierzchnia,cena_za_m2,data_wstawienia,agent) VALUES (\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',NOW(),\'%s\')' % (url, miejsce, miejscowosc, cena, powierzchnia, cena_za_m2, agent)
                     cursor.execute(sql_statement)
-                    conn.commit()
+                    connection.commit()
                     cnt+=1
             ending_time = datetime.now()
             print('Execution time: ' + str((ending_time-starting_time).total_seconds()))
@@ -128,10 +135,10 @@ for url_main in urls:
             url_main=soup_main.find_all(id="pagination-outer")[0].find(class_="btn-a")["href"]
         except TypeError:
             url_main=""
-        conn.commit()
+        connection.commit()
 ending_time_global = datetime.now()
-cursor_distance=conn.cursor()
-cursor_distance.execute('EXEC dbo.refresh_nieruchomosci_dzialki')
+cursor_distance=connection.cursor()
+cursor_distance.execute('EXEC public.refresh_nieruchomosci_dzialki')
 print('Execution time of the entire script: ' + str((ending_time_global-starting_time_global).total_seconds()))
 print('Rows inserted: ' + str(cnt))
     
